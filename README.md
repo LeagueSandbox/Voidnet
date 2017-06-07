@@ -1,0 +1,2 @@
+# Voidnet
+Simpel decentralized network
