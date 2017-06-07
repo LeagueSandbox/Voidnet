@@ -2,9 +2,12 @@
   "name": "voidnet",
   "version": "0.0.1",
   "description": "Simple decentralized network",
-  "main": "index.js",
+  "main": "./built/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "tsc": "tsc -p .",
+    "watch": "tsc -p . -w",
+    "start": "node ./built/index.js"
   },
   "repository": {
     "type": "git",
@@ -23,5 +26,8 @@
   "homepage": "https://github.com/LeagueSandbox/Voidnet#readme",
   "dependencies": {
     "socket.io": "^2.0.2"
+  },
+  "devDependencies": {
+    "typescript": "^2.3.4"
   }
 }

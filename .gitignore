@@ -1,3 +1,9 @@
+# Visual Studio Code
+.vscode
+
+# Built javascript
+built
+
 # Logs
 logs
 *.log
