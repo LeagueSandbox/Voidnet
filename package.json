@@ -1,0 +1,27 @@
+{
+  "name": "voidnet",
+  "version": "0.0.1",
+  "description": "Simple decentralized network",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LeagueSandbox/Voidnet.git"
+  },
+  "keywords": [
+    "decentralized",
+    "networking",
+    "network"
+  ],
+  "author": "Mythic",
+  "license": "GPL-3.0",
+  "bugs": {
+    "url": "https://github.com/LeagueSandbox/Voidnet/issues"
+  },
+  "homepage": "https://github.com/LeagueSandbox/Voidnet#readme",
+  "dependencies": {
+    "socket.io": "^2.0.2"
+  }
+}
