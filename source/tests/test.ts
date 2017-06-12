@@ -1,10 +1,8 @@
 import { suite, test } from "mocha-typescript"
 import { expect } from "chai"
 
-import {
-    VoidnetNodeMeta, VoidnetServer,
-    VoidnetHandshakeHandler
-} from "../voidnet"
+import { VoidnetNodeMeta, VoidnetServer } from "../voidnet"
+import { VoidnetHandshakeHandler } from "../handshake"
 
 
 class FakeVoidnetServer extends VoidnetServer {
