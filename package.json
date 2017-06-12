@@ -4,7 +4,8 @@
   "description": "Simple decentralized network",
   "main": "./built/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "cross-env TS_NODE_PROJECT=. mocha --compilers ts:ts-node/register \"source/tests\"",
+    "cover": "nyc -e '.ts' --r lcov  npm run test && rm -rf ./.nyc_output",
     "tsc": "tsc -p .",
     "watch": "tsc -p . -w",
     "start": "node ./built/index.js"
@@ -28,6 +29,17 @@
     "socket.io": "^2.0.2"
   },
   "devDependencies": {
+    "@types/chai": "^4.0.0",
+    "@types/node": "^7.0.28",
+    "@types/socket.io": "^1.4.29",
+    "@types/socket.io-client": "^1.4.29",
+    "chai": "^4.0.2",
+    "cross-env": "^5.0.1",
+    "istanbul": "1.1.0-alpha.1",
+    "mocha": "^3.4.2",
+    "mocha-typescript": "^1.1.4",
+    "nyc": "^11.0.2",
+    "ts-node": "^3.0.6",
     "typescript": "^2.3.4"
   }
 }
