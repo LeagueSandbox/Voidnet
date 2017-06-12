@@ -26,6 +26,7 @@
   },
   "homepage": "https://github.com/LeagueSandbox/Voidnet#readme",
   "dependencies": {
+    "guid": "^0.0.12",
     "socket.io": "^2.0.2"
   },
   "devDependencies": {
