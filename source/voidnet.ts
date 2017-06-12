@@ -154,7 +154,7 @@ export class VoidnetHandshakeHandler {
                     const check = (
                         GetUri(remoteHandshake) == GetUri(remoteVerify) &&
                         remoteHandshake.guid == remoteVerify.guid &&
-                        remoteHandshake.data == remoteVerify.data // Secret
+                        remoteHandshake.data == remoteVerify.data // Should be the secret in this frame
                     )
 
                     // This wasn't the same node
@@ -207,21 +207,20 @@ export class VoidnetHandshakeHandler {
 export class VoidnetServer {
     protected server: http.Server
     protected io: SocketIO.Server
-    protected handshakeHandler: VoidnetHandshakeHandler
     protected eventEmitter: events.EventEmitter
+    public handshakeHandler: VoidnetHandshakeHandler
 
     public readonly meta: VoidnetNodeMeta
     protected connections: VoidnetConnection[]
 
     get connectionCount(): Number { return this.connections.length }
 
-
     constructor(hostname: string, port: number) {
         this.meta = new VoidnetNodeMeta({
             hostname: hostname,
             port: port
         })
-        this.handshakeHandler = new VoidnetHandshakeHandler(this.meta)
+        this.handshakeHandler = this.GetHandshakeHandler(this.meta)
         this.handshakeHandler.on("success", this.HandleSuccessfullHandshake)
         this.server = http.createServer()
         this.io = SocketIOServer(this.server)
@@ -229,6 +228,10 @@ export class VoidnetServer {
         this.server.listen(port, hostname)
         this.eventEmitter = new events.EventEmitter()
         this.connections = []
+    }
+
+    protected GetHandshakeHandler(meta: VoidnetNodeMeta): VoidnetHandshakeHandler {
+        return new VoidnetHandshakeHandler(this.meta)
     }
 
     private HandleSuccessfullHandshake = (connection: VoidnetConnection) => {
