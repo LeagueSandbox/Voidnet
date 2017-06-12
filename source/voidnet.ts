@@ -9,7 +9,7 @@ export class VoidnetNodeMeta {
     public readonly port: number
     public readonly guid: string
 
-    get uri(): string { return "http://" + this.hostname + ":" + this.port }
+    get uri() { return GetUri(this) }
 
     constructor(data: {hostname: string, port: number, guid?: string}) {
         this.hostname = data.hostname
@@ -20,7 +20,7 @@ export class VoidnetNodeMeta {
         }
     }
 
-    ToHandshakeDatum(data: string): VoidnetHandshakeDatum {
+    ToHandshakeDatum(data?: string): VoidnetHandshakeDatum {
         return {
             "hostname": this.hostname,
             "port": this.port,
@@ -30,88 +30,18 @@ export class VoidnetNodeMeta {
     }
 }
 
-function GetUri(datum: VoidnetHandshakeDatum): string {
-    return "http://" + datum.hostname + ":" + datum.port
+export function GetUri({hostname, port}): string {
+    return "http://" + hostname + ":" + port
 }
 
-interface VoidnetHandshakeDatum {
+export interface VoidnetHandshakeDatum {
     hostname: string
     port: number
     guid: string
     data: string
 }
 
-// Voidnet Connection Handshake
-//
-// away node opens websocket client connection to local node
-// away node client sends a "handshake" event with node meta + secret
-// local node server responds with own node meta
-// local node opens a websocket client connection to away node
-// local node client sends a "handshake-ack" event with node meta
-// away node server responds with node meta + secret
-// local node validates meta + secret and server sends "handshake-result" with "success" or "fail"
-//
-// If any step fails, the connection is terminated
-
-function HandleHandshake(
-    serverSocket: SocketIO.Socket,
-    localMeta: VoidnetNodeMeta,
-    handshakeAckCallback: Function,
-    successfullHandshakeCallback: Function) {
-
-    // Away node is initiating connection to local node
-    serverSocket.on("handshake", (remoteHandshake: VoidnetHandshakeDatum, respond: Function) => {
-        serverSocket.removeAllListeners("handshake")
-        serverSocket.removeAllListeners("handshake-ack")
-
-        // Respond with our meta
-        respond(localMeta)
-
-        // Form a client connection to the node wanting to connect
-        const clientSocket = SocketIOClient(GetUri(remoteHandshake))
-        clientSocket.on("connect", () => {
-
-            // Send the "handshake-ack" event with our meta
-            clientSocket.emit("handshake-ack", localMeta, (remoteVerify: VoidnetHandshakeDatum) => {
-
-                // Make sure we connected to the same node that connected to us
-                // Do this by verifying the meta and the secret are the same
-                const check = (
-                    GetUri(remoteHandshake) == GetUri(remoteVerify) &&
-                    remoteHandshake.guid == remoteVerify.guid &&
-                    remoteHandshake.data == remoteVerify.data // Secret
-                )
-
-                // This wasn't the same node
-                // Inform the node the handshake failed and close connections
-                if(!check) {
-                    serverSocket.emit("handshake-result", localMeta.ToHandshakeDatum("fail"))
-                    serverSocket.disconnect(true)
-                    clientSocket.disconnect()
-                    return
-                }
-
-                // This was the same node, handshake should be Successfull
-                // We now have connected to the node as the client and as the server
-                serverSocket.emit("handshake-result", localMeta.ToHandshakeDatum("success"))
-                successfullHandshakeCallback(new VoidnetConnection(
-                    clientSocket,
-                    serverSocket,
-                    new VoidnetNodeMeta(remoteHandshake)
-                ))
-            })
-        })
-    })
-
-    // Local node is initiating connection to away node
-    serverSocket.on("handshake-ack", (remoteMeta: VoidnetNodeMeta, verify: Function) => {
-        serverSocket.removeAllListeners("handshake")
-        serverSocket.removeAllListeners("handshake-ack")
-        handshakeAckCallback(serverSocket, remoteMeta, verify)
-    })
-}
-
-class PendingHandshake {
+export class PendingHandshake {
     public readonly handshakeDatum: VoidnetHandshakeDatum
     public readonly remoteMeta: VoidnetNodeMeta
     public readonly clientSocket: SocketIOClient.Socket
@@ -135,26 +65,27 @@ class PendingHandshake {
     }
 }
 
-class VoidnetHandshakeHandler {
+export class VoidnetHandshakeHandler {
     private readonly _meta: VoidnetNodeMeta
     protected pendingHandshakes: Map<string, PendingHandshake>
     protected handshakeSuccessHandler: Function
+    protected eventEmitter: events.EventEmitter
 
     get meta(): VoidnetNodeMeta {
         return this._meta
     }
 
-    constructor(meta: VoidnetNodeMeta, handshakeSuccessHandler: Function) {
+    constructor(meta: VoidnetNodeMeta) {
         this._meta = meta
         this.pendingHandshakes = new Map()
-        this.handshakeSuccessHandler = handshakeSuccessHandler
+        this.eventEmitter = new events.EventEmitter()
     }
 
     public HandleIncoming = (socket): void => {
-        HandleHandshake(socket, this.meta, this.HandleHandshakeAck, this.handshakeSuccessHandler)
+        this.HandleHandshake(socket)
     }
 
-    private HandleHandshakeAck = (serverSocket: SocketIO.Socket, remoteMeta: VoidnetNodeMeta, verify: Function) => {
+    protected HandleHandshakeAck = (serverSocket: SocketIO.Socket, remoteMeta: VoidnetNodeMeta, verify: Function) => {
         if(this.pendingHandshakes.has(remoteMeta.guid)) {
             const pendingHandshake = this.pendingHandshakes.get(remoteMeta.guid)
             pendingHandshake.serverSocket = serverSocket
@@ -169,13 +100,88 @@ class VoidnetHandshakeHandler {
             const pendingHandshake = this.pendingHandshakes.get(result.guid)
             this.pendingHandshakes.delete(result.guid)
             if(result.data === "success") {
-                this.handshakeSuccessHandler(pendingHandshake.ToVoidnetConnection())
+                this.eventEmitter.emit("success", pendingHandshake.ToVoidnetConnection())
             }
             else {
+                this.eventEmitter.emit("failure")
                 pendingHandshake.clientSocket.disconnect()
-                pendingHandshake.serverSocket.disconnect(true)
+                if(pendingHandshake.serverSocket !== undefined) {
+                    pendingHandshake.serverSocket!.disconnect(true)
+                }
             }
         }
+    }
+
+    // Voidnet Connection Handshake
+    //
+    // away node opens websocket client connection to local node
+    // away node client sends a "handshake" event with node meta + secret
+    // local node server responds with own node meta
+    // local node opens a websocket client connection to away node
+    // local node client sends a "handshake-ack" event with node meta
+    // away node server responds with node meta + secret
+    // local node validates meta + secret and server sends "handshake-result" with "success" or "fail"
+    //
+    // If any step fails, the connection is terminated
+    private HandleHandshake(serverSocket: SocketIO.Socket) {
+
+        // Away node is initiating connection to local node
+        serverSocket.on("handshake", (remoteHandshake: VoidnetHandshakeDatum, respond: Function) => {
+            serverSocket.removeAllListeners("handshake")
+            serverSocket.removeAllListeners("handshake-ack")
+
+            // Respond with our meta
+            respond(this.meta)
+
+            // Form a client connection to the node wanting to connect
+            const clientSocket = SocketIOClient(GetUri(remoteHandshake))
+
+            const fail = () => {
+                serverSocket.emit("handshake-result", this.meta.ToHandshakeDatum("fail"))
+                this.eventEmitter.emit("failure")
+                serverSocket.disconnect(true)
+                clientSocket.disconnect()
+            }
+
+            clientSocket.on("disconnect", fail)
+            clientSocket.on("connect", () => {
+
+                // Send the "handshake-ack" event with our meta
+                clientSocket.emit("handshake-ack", this.meta, (remoteVerify: VoidnetHandshakeDatum) => {
+
+                    // Make sure we connected to the same node that connected to us
+                    // Do this by verifying the meta and the secret are the same
+                    const check = (
+                        GetUri(remoteHandshake) == GetUri(remoteVerify) &&
+                        remoteHandshake.guid == remoteVerify.guid &&
+                        remoteHandshake.data == remoteVerify.data // Secret
+                    )
+
+                    // This wasn't the same node
+                    // Inform the node the handshake failed and close connections
+                    if(!check) {
+                        return fail()
+                    }
+
+                    // This was the same node, handshake should be Successfull
+                    // We now have connected to the node as the client and as the server
+                    clientSocket.removeListener("disconnect", fail)
+                    serverSocket.emit("handshake-result", this.meta.ToHandshakeDatum("success"))
+                    this.eventEmitter.emit("success", new VoidnetConnection(
+                        clientSocket,
+                        serverSocket,
+                        new VoidnetNodeMeta(remoteHandshake)
+                    ))
+                })
+            })
+        })
+
+        // Local node is initiating connection to away node
+        serverSocket.on("handshake-ack", (remoteMeta: VoidnetNodeMeta, verify: Function) => {
+            serverSocket.removeAllListeners("handshake")
+            serverSocket.removeAllListeners("handshake-ack")
+            this.HandleHandshakeAck(serverSocket, remoteMeta, verify)
+        })
     }
 
     public Connect(uri: string): void {
@@ -191,6 +197,10 @@ class VoidnetHandshakeHandler {
                 ))
             })
         })
+    }
+
+    public on(event: string, callback: Function) {
+        this.eventEmitter.on(event, callback)
     }
 }
 
@@ -211,7 +221,8 @@ export class VoidnetServer {
             hostname: hostname,
             port: port
         })
-        this.handshakeHandler = new VoidnetHandshakeHandler(this.meta, this.HandleSuccessfullHandshake)
+        this.handshakeHandler = new VoidnetHandshakeHandler(this.meta)
+        this.handshakeHandler.on("success", this.HandleSuccessfullHandshake)
         this.server = http.createServer()
         this.io = SocketIOServer(this.server)
         this.io.on("connection", this.handshakeHandler.HandleIncoming)
@@ -234,7 +245,7 @@ export class VoidnetServer {
     }
 }
 
-class VoidnetConnection {
+export class VoidnetConnection {
     protected clientSocket: SocketIOClient.Socket
     protected serverSocket: SocketIO.Socket
     public readonly remoteMeta: VoidnetNodeMeta
