@@ -21,7 +21,7 @@ function MakeHandshakeDatum(meta: VoidnetNodeMeta, data: string): VoidnetHandsha
     }
 }
 
-export class PendingHandshake {
+export class VoidnetPendingHandshake {
     public readonly handshakeDatum: VoidnetHandshakeDatum
     public readonly remoteMeta: VoidnetNodeMeta
     public readonly clientSocket: SocketIOClient.Socket
@@ -47,7 +47,7 @@ export class PendingHandshake {
 
 export class VoidnetHandshakeHandler {
     private readonly _meta: VoidnetNodeMeta
-    protected pendingHandshakes: Map<string, PendingHandshake>
+    protected pendingHandshakes: Map<string, VoidnetPendingHandshake>
     protected handshakeSuccessHandler: Function
     protected eventEmitter: events.EventEmitter
 
@@ -79,6 +79,7 @@ export class VoidnetHandshakeHandler {
         if(this.pendingHandshakes.has(result.guid)) {
             const pendingHandshake = this.pendingHandshakes.get(result.guid)
             this.pendingHandshakes.delete(result.guid)
+            pendingHandshake.clientSocket.removeEventListener("handshake-result", this.HandleHandshakeResult)
             if(result.data === "success") {
                 this.eventEmitter.emit("success", pendingHandshake.ToVoidnetConnection())
             }
@@ -170,7 +171,7 @@ export class VoidnetHandshakeHandler {
         clientSocket.on("handshake-result", this.HandleHandshakeResult)
         clientSocket.on("connect", () => {
             clientSocket.emit("handshake", handshakeDatum, (remoteMeta: VoidnetNodeMeta) => {
-                this.pendingHandshakes.set(remoteMeta.guid, new PendingHandshake(
+                this.pendingHandshakes.set(remoteMeta.guid, new VoidnetPendingHandshake(
                     clientSocket,
                     handshakeDatum,
                     remoteMeta

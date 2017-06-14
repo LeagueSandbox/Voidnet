@@ -1452,6 +1452,10 @@ signal-exit@^3.0.0, signal-exit@^3.0.1, signal-exit@^3.0.2:
   version "3.0.2"
   resolved "https://registry.yarnpkg.com/signal-exit/-/signal-exit-3.0.2.tgz#b5fdc08f1287ea1178628e415e25132b73646c6d"
 
+sleep-promise@^2.0.0:
+  version "2.0.0"
+  resolved "https://registry.yarnpkg.com/sleep-promise/-/sleep-promise-2.0.0.tgz#e7e798dfe56c044da85882d76d22a99804663c41"
+
 slide@^1.1.5:
   version "1.1.6"
   resolved "https://registry.yarnpkg.com/slide/-/slide-1.1.6.tgz#56eb027d65b4d2dce6cb2e2d32c4d4afc9e1d707"
