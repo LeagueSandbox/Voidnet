@@ -90,9 +90,9 @@ class TestComponents {
     @test
     async "VoidnetMessageTracker timeout"() {
         const tracker = new VoidnetTestMessageTracker()
-        const msgOld = new VoidnetMessage("tester", 0, "data")
-        const msgMiddle = new VoidnetMessage("tester", 1, "data 2")
-        const msgNewest = new VoidnetMessage("tester", 2, "data 2")
+        const msgOld = new VoidnetMessage("tester", 0, "test", "data")
+        const msgMiddle = new VoidnetMessage("tester", 1, "test", "data 2")
+        const msgNewest = new VoidnetMessage("tester", 2, "test", "data 2")
         expect(tracker.IsMessageOld(msgOld)).to.be.false
         expect(tracker.IsMessageOld(msgMiddle)).to.be.false
         expect(tracker.IsMessageOld(msgNewest)).to.be.false
@@ -114,17 +114,17 @@ class TestComponents {
         })
         const handler = new VoidnetTestMessageHandler(meta)
 
-        const msg1 = handler.MakeMessage("top")
+        const msg1 = handler.MakeMessage("test", "top")
         expect(msg1.id).to.equal(0)
         expect(msg1.sender).to.equal(meta.guid)
         expect(msg1.data).to.equal("top")
 
-        const msg2 = handler.MakeMessage("kek")
+        const msg2 = handler.MakeMessage("test", "kek")
         expect(msg2.id).to.equal(1)
         expect(msg2.sender).to.equal(meta.guid)
         expect(msg2.data).to.equal("kek")
 
-        const msg3 = handler.MakeMessage({"more": "complex", "data": 1})
+        const msg3 = handler.MakeMessage("test", {"more": "complex", "data": 1})
         expect(msg3.id).to.equal(2)
         expect(msg3.sender).to.equal(meta.guid)
         expect(msg3.data).to.deep.equal({"more": "complex", "data": 1})
@@ -141,7 +141,7 @@ class TestComponents {
         handler.on("received", (message: VoidnetMessage) => {
             throw new Error("Own messages shouldn't be processed")
         })
-        handler.ProcessMessage(handler.MakeMessage("don't pass"))
+        handler.ProcessMessage(handler.MakeMessage("test", "don't pass"))
     }
 
     @test
@@ -154,28 +154,28 @@ class TestComponents {
         let receivedCount = 0
 
         const handler = new VoidnetTestMessageHandler(meta)
-        handler.on("received", (message: VoidnetMessage) => {
+        handler.on("test", (message: VoidnetMessage) => {
             receivedCount++
         })
 
-        handler.ProcessMessage(new VoidnetMessage("a", 0, ""))
+        handler.ProcessMessage(new VoidnetMessage("a", 0, "test", ""))
         expect(receivedCount).to.equal(1)
-        handler.ProcessMessage(new VoidnetMessage("a", 0, "b"))
+        handler.ProcessMessage(new VoidnetMessage("a", 0, "test", "b"))
         expect(receivedCount).to.equal(1)
-        handler.ProcessMessage(new VoidnetMessage("b", 0, ""))
+        handler.ProcessMessage(new VoidnetMessage("b", 0, "test", ""))
         expect(receivedCount).to.equal(2)
-        handler.ProcessMessage(new VoidnetMessage("b", 0, "a"))
+        handler.ProcessMessage(new VoidnetMessage("b", 0, "test", "a"))
         expect(receivedCount).to.equal(2)
-        handler.ProcessMessage(new VoidnetMessage("a", 1, ""))
+        handler.ProcessMessage(new VoidnetMessage("a", 1, "test", ""))
         expect(receivedCount).to.equal(3)
-        handler.ProcessMessage(new VoidnetMessage("b", 1, ""))
+        handler.ProcessMessage(new VoidnetMessage("b", 1, "test", ""))
         expect(receivedCount).to.equal(4)
-        handler.ProcessMessage(new VoidnetMessage("a", 10, ""))
+        handler.ProcessMessage(new VoidnetMessage("a", 10, "test", ""))
         expect(receivedCount).to.equal(5)
-        handler.ProcessMessage(new VoidnetMessage("a", 6, ""))
+        handler.ProcessMessage(new VoidnetMessage("a", 6, "test", ""))
         expect(receivedCount).to.equal(6)
         await sleep(TEST_MESSAGE_TIMEOUT)
-        handler.ProcessMessage(new VoidnetMessage("a", 7, ""))
+        handler.ProcessMessage(new VoidnetMessage("a", 7, "test", ""))
         expect(receivedCount).to.equal(6)
     }
 
@@ -186,9 +186,9 @@ class TestComponents {
             port: 404
         })
 
-        const testMessage = new VoidnetMessage("test", 5, "Some data")
+        const testMessage = new VoidnetMessage("test", 5, "test", "Some data")
         const handler = new VoidnetMessageHandler(meta)
-        handler.on("received", (message: VoidnetMessage) => {
+        handler.on("test", (message: VoidnetMessage) => {
             expect(message).to.equal(testMessage)
             done()
         })

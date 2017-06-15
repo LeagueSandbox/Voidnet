@@ -11,4 +11,5 @@ Simple decentralized network
 * Broadcasting that propagates accross the whole network
 * Vector clock based messaging (messages are processed only once)
 * Mesages are signed by nodes and sender can be verified
+* Validate all incoming websocket traffic
 
