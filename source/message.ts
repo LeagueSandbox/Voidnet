@@ -1,18 +1,28 @@
 import * as events from "events"
+import * as Guid from "guid"
+import * as Validator from "validator"
 
 import { VoidnetNodeMeta } from "./voidnet"
 
 export class VoidnetMessage {
     public readonly sender: string
     public readonly id: number
-    public readonly data: any
     public readonly type: string
+    public readonly data: any
 
-    constructor(sender: string, id: number, type: string, data: any) {
-        this.sender = sender
-        this.id = id
-        this.data = data
-        this.type = type
+    constructor(params: {sender: string, id: number, type: string, data: any}) {
+        this.sender = params.sender
+        this.id = params.id
+        this.type = params.type
+        this.data = params.data
+    }
+
+    public Validate(): boolean {
+        return (
+            Guid.isGuid(String(this.sender)) &&
+            Validator.isInt(String(this.id)) &&
+            Validator.isLength(String(this.type), 1)
+        )
     }
 }
 
@@ -52,6 +62,9 @@ export class VoidnetMessageHandler {
     protected lastId: number
     protected messageTrackers: Map<string, VoidnetMessageTracker>
     protected eventEmitter: events.EventEmitter
+    protected rejectedCounter: number
+
+    public get rejectedMessageCount(): number { return this.rejectedCounter }
 
     constructor(meta: VoidnetNodeMeta) {
         this.meta = meta
@@ -59,15 +72,16 @@ export class VoidnetMessageHandler {
         this.messageTrackers = new Map<string, VoidnetMessageTracker>()
         this.messageTrackers.set(meta.guid, this.CreateMessageTracker())
         this.eventEmitter = new events.EventEmitter()
+        this.rejectedCounter = 0
     }
 
     public MakeMessage(type: string, data: any): VoidnetMessage {
-        const message = new VoidnetMessage(
-            this.meta.guid,
-            this.lastId++,
-            type,
-            data
-        )
+        const message = new VoidnetMessage({
+            sender: this.meta.guid,
+            id: this.lastId++,
+            type: type,
+            data: data
+        })
         this.messageTrackers.get(this.meta.guid).Track(message)
         return message
     }
@@ -82,13 +96,25 @@ export class VoidnetMessageHandler {
 
     public ProcessMessage = (message: VoidnetMessage) => this._ProcessMessage(message)
     protected _ProcessMessage(message: VoidnetMessage): void {
+        // Re-initialize the object, since we actually have received just it's data (and no functions)
+        message = new VoidnetMessage(message)
+
+        // Validate the message, return if it isn't valid
+        if(!message.Validate()) {
+            this.rejectedCounter++
+            return
+        }
+
         // Make sure we have a map of seen messages for the sender
         if(!this.messageTrackers.has(message.sender)) {
             this.messageTrackers.set(message.sender, this.CreateMessageTracker())
         }
 
         // Ignore this message if we've already seen it once
-        if(this.messageTrackers.get(message.sender).IsMessageOld(message)) return
+        if(this.messageTrackers.get(message.sender).IsMessageOld(message)) {
+            this.rejectedCounter++
+            return
+        }
 
         // This is a new message; add it to our seen messages and fire the message received event
         this.messageTrackers.get(message.sender).Track(message)

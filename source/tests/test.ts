@@ -35,6 +35,14 @@ class VoidnetTestMessageHandler extends VoidnetMessageHandler {
     }
 }
 
+const message = (sender, id, type, data) => {
+    return new VoidnetMessage({
+        sender: sender,
+        id: id,
+        type: type,
+        data: data
+    })
+}
 
 @suite("Test Voidnet Components")
 class TestComponents {
@@ -89,10 +97,11 @@ class TestComponents {
 
     @test
     async "VoidnetMessageTracker timeout"() {
+
         const tracker = new VoidnetTestMessageTracker()
-        const msgOld = new VoidnetMessage("tester", 0, "test", "data")
-        const msgMiddle = new VoidnetMessage("tester", 1, "test", "data 2")
-        const msgNewest = new VoidnetMessage("tester", 2, "test", "data 2")
+        const msgOld = message("00000000-0000-0000-0000-000000000001", 0, "test", "data")
+        const msgMiddle = message("00000000-0000-0000-0000-000000000001", 1, "test", "data 2")
+        const msgNewest = message("00000000-0000-0000-0000-000000000001", 2, "test", "data 2")
         expect(tracker.IsMessageOld(msgOld)).to.be.false
         expect(tracker.IsMessageOld(msgMiddle)).to.be.false
         expect(tracker.IsMessageOld(msgNewest)).to.be.false
@@ -131,17 +140,16 @@ class TestComponents {
     }
 
     @test
-    "VoidnetMessageHandler local message processing"() {
+    async "VoidnetMessageHandler local message processing"() {
         const meta = new VoidnetNodeMeta({
             hostname: "www.test.domain",
             port: 404
         })
 
         const handler = new VoidnetTestMessageHandler(meta)
-        handler.on("received", (message: VoidnetMessage) => {
-            throw new Error("Own messages shouldn't be processed")
-        })
         handler.ProcessMessage(handler.MakeMessage("test", "don't pass"))
+        await sleep(TEST_MESSAGE_TIMEOUT)
+        expect(handler.rejectedMessageCount).to.equal(1)
     }
 
     @test
@@ -158,25 +166,46 @@ class TestComponents {
             receivedCount++
         })
 
-        handler.ProcessMessage(new VoidnetMessage("a", 0, "test", ""))
+        handler.ProcessMessage(message("00000000-0000-0000-0000-000000000001", 0, "test", ""))
         expect(receivedCount).to.equal(1)
-        handler.ProcessMessage(new VoidnetMessage("a", 0, "test", "b"))
+        handler.ProcessMessage(message("00000000-0000-0000-0000-000000000001", 0, "test", "b"))
         expect(receivedCount).to.equal(1)
-        handler.ProcessMessage(new VoidnetMessage("b", 0, "test", ""))
+        handler.ProcessMessage(message("00000000-0000-0000-0000-000000000002", 0, "test", ""))
         expect(receivedCount).to.equal(2)
-        handler.ProcessMessage(new VoidnetMessage("b", 0, "test", "a"))
+        handler.ProcessMessage(message("00000000-0000-0000-0000-000000000002", 0, "test", "a"))
         expect(receivedCount).to.equal(2)
-        handler.ProcessMessage(new VoidnetMessage("a", 1, "test", ""))
+        handler.ProcessMessage(message("00000000-0000-0000-0000-000000000001", 1, "test", ""))
         expect(receivedCount).to.equal(3)
-        handler.ProcessMessage(new VoidnetMessage("b", 1, "test", ""))
+        handler.ProcessMessage(message("00000000-0000-0000-0000-000000000002", 1, "test", ""))
         expect(receivedCount).to.equal(4)
-        handler.ProcessMessage(new VoidnetMessage("a", 10, "test", ""))
+        handler.ProcessMessage(message("00000000-0000-0000-0000-000000000001", 10, "test", ""))
         expect(receivedCount).to.equal(5)
-        handler.ProcessMessage(new VoidnetMessage("a", 6, "test", ""))
+        handler.ProcessMessage(message("00000000-0000-0000-0000-000000000001", 6, "test", ""))
         expect(receivedCount).to.equal(6)
         await sleep(TEST_MESSAGE_TIMEOUT)
-        handler.ProcessMessage(new VoidnetMessage("a", 7, "test", ""))
+        handler.ProcessMessage(message("00000000-0000-0000-0000-000000000001", 7, "test", ""))
         expect(receivedCount).to.equal(6)
+    }
+
+    @test
+    async "VoidnetMessageHandler invalid message processing"() {
+        const meta = new VoidnetNodeMeta({
+            hostname: "www.test.domain",
+            port: 404
+        })
+
+        const testMessage = new VoidnetMessage({
+            sender: "garbagesender",
+            id: 5,
+            type: "test",
+            data: "Some data"
+        })
+        const handler = new VoidnetMessageHandler(meta)
+        handler.ProcessMessage(message("garbage", 1, "test", ""))
+        handler.ProcessMessage(message("00000000-0000-0000-0000-000000000001", "garbage", "test", ""))
+        handler.ProcessMessage(message("00000000-0000-0000-0000-000000000001", 2, "", "TypeIsGarbage"))
+        await sleep(TEST_MESSAGE_TIMEOUT)
+        expect(handler.rejectedMessageCount).to.equal(3)
     }
 
     @test
@@ -186,14 +215,31 @@ class TestComponents {
             port: 404
         })
 
-        const testMessage = new VoidnetMessage("test", 5, "test", "Some data")
+        const testMessage = new VoidnetMessage({
+            sender: "00000000-0000-0000-0000-000000000001",
+            id: 5,
+            type: "test",
+            data: "Some data"
+        })
         const handler = new VoidnetMessageHandler(meta)
         handler.on("test", (message: VoidnetMessage) => {
-            expect(message).to.equal(testMessage)
+            expect(message).to.deep.equal(testMessage)
             done()
         })
 
         handler.ProcessMessage(testMessage)
+    }
+
+    @test
+    "VoidnetMessage validation"() {
+        const valid = message("00000000-0000-0000-0000-000000000001", 5, "test", "")
+        const invalid1 = message("invalid", 5, "test", "")
+        const invalid2 = message("00000000-0000-0000-0000-000000000001", "invalid", "test", "")
+        const invalid3 = message("00000000-0000-0000-0000-000000000001", 5, "", "")
+        expect(valid.Validate()).to.be.true
+        expect(invalid1.Validate()).to.be.false
+        expect(invalid2.Validate()).to.be.false
+        expect(invalid3.Validate()).to.be.false
     }
 }
 
