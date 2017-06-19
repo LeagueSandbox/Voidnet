@@ -98,7 +98,7 @@ class TestComponents {
     "VoidnetServer cross connection"(done) {
         const srv1 = new VoidnetServer("localhost", GetUnusedPort())
         const srv2 = new VoidnetServer("localhost", GetUnusedPort())
-        srv1.on("connection", () => {
+        srv1.OnConnection(() => {
             expect(srv1.connectionCount).to.equal(1)
             expect(srv2.connectionCount).to.equal(1)
             done()
@@ -198,7 +198,7 @@ class TestComponents {
         let receivedCount = 0
 
         const handler = new VoidnetTestMessageHandler(meta)
-        handler.onMessage("test", (message: VoidnetMessage) => {
+        handler.OnMessage("test", (message: VoidnetMessage) => {
             receivedCount++
         })
 
@@ -259,7 +259,7 @@ class TestComponents {
             data: "Some data"
         })
         const handler = new VoidnetMessageHandler(meta)
-        handler.onMessage("test", (message: VoidnetMessage) => {
+        handler.OnMessage("test", (message: VoidnetMessage) => {
             expect(message).to.deep.equal(testMessage)
             done()
         })
@@ -282,6 +282,11 @@ class TestComponents {
         expect(invalid4.Validate()).to.be.false
         expect(invalid5.Validate()).to.be.false
     }
+
+    @test
+    "VoidnetConnection"() {
+        // IMPLEMENT
+    }
 }
 
 @suite("Test Voidnet Networking")
@@ -303,23 +308,23 @@ class TestNetworking {
                 expect(srv1.connectionCount).to.equal(1)
                 expect(srv2.connectionCount).to.equal(2)
                 expect(srv3.connectionCount).to.equal(1)
-                srv3.broadcast("test", "data")
+                srv3.Broadcast("test", "data")
             }
         })
 
         srv1.Connect(srv2.meta.uri)
         srv2.Connect(srv3.meta.uri)
 
-        srv1.on("connection", () => connections.value++)
-        srv2.on("connection", () => connections.value++)
-        srv3.on("connection", () => connections.value++)
+        srv1.OnConnection(() => connections.value++)
+        srv2.OnConnection(() => connections.value++)
+        srv3.OnConnection(() => connections.value++)
 
-        srv2.onMessage("test", (message: VoidnetMessage) => {
+        srv2.OnMessage("test", (message: VoidnetMessage) => {
             expect(message.sender).to.equal(srv3.meta.guid)
             expect(message.data).to.equal("data")
             validMessages.value++
         })
-        srv1.onMessage("test", (message: VoidnetMessage) => {
+        srv1.OnMessage("test", (message: VoidnetMessage) => {
             expect(message.sender).to.equal(srv3.meta.guid)
             expect(message.data).to.equal("data")
             validMessages.value++

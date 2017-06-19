@@ -94,11 +94,11 @@ export class VoidnetMessageHandler {
         return message
     }
 
-    public on(event: string, listener: Function): void {
+    public OnEvent(event: string, listener: Function): void {
         this.eventEmitter.on(event, listener)
     }
 
-    public onMessage(event: string, listener: Function): void {
+    public OnMessage(event: string, listener: Function): void {
         this.messageEmitter.on(event, listener)
     }
 

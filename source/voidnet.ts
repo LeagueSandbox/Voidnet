@@ -44,7 +44,7 @@ export class VoidnetConnection {
     private OnDisconnection = () => {
         if(this.clientSocket.connected) this.clientSocket.disconnect()
         if(this.serverSocket.connected) this.serverSocket.disconnect(true)
-        this.eventEmitter.emit("disconnected")
+        this.eventEmitter.emit("disconnected", this)
     }
 
     private MapEvents(): void {
@@ -53,12 +53,18 @@ export class VoidnetConnection {
         this.clientSocket.on("message", (message) => this.eventEmitter.emit("message", message))
     }
 
-    public on(event: string, listener: Function) {
+    public on(event: string, listener: Function): void {
         this.eventEmitter.on(event, listener)
     }
 
-    public send(message: VoidnetMessage) {
+    public send(message: VoidnetMessage): void {
         this.serverSocket.emit("message", message)
+    }
+
+    public disconnect() {
+        this.eventEmitter.removeAllListeners()
+        this.clientSocket.disconnect()
+        this.serverSocket.disconnect(true)
     }
 }
 
@@ -70,9 +76,9 @@ export class VoidnetServer {
     protected messageHandler: VoidnetMessageHandler
 
     public readonly meta: VoidnetNodeMeta
-    protected connections: VoidnetConnection[]
+    protected connections: Map<string, VoidnetConnection>
 
-    get connectionCount(): Number { return this.connections.length }
+    get connectionCount(): Number { return this.connections.size }
 
     constructor(hostname: string, port: number) {
         this.meta = new VoidnetNodeMeta({
@@ -82,13 +88,12 @@ export class VoidnetServer {
         this.handshakeHandler = this.CreateHandshakeHandler(this.meta)
         this.handshakeHandler.on("success", this.HandleSuccessfullHandshake)
         this.messageHandler = new VoidnetMessageHandler(this.meta)
-        this.messageHandler.on("received", (message) => this.sendToAll(message))
+        this.messageHandler.OnEvent("received", (message) => this.SendToAll(message))
         this.server = http.createServer()
         this.io = SocketIOServer(this.server)
         this.io.on("connection", this.handshakeHandler.HandleIncoming)
         this.server.listen(port, hostname)
-        this.eventEmitter = new events.EventEmitter()
-        this.connections = []
+        this.connections = new Map<string, VoidnetConnection>()
     }
 
     protected CreateHandshakeHandler(meta: VoidnetNodeMeta): VoidnetHandshakeHandler {
@@ -96,50 +101,39 @@ export class VoidnetServer {
     }
 
     private HandleSuccessfullHandshake = (connection: VoidnetConnection) => {
-        this.connections.push(connection)
+        this.connections.set(connection.remoteMeta.guid, connection)
         connection.on("message", (message) => {
             this.messageHandler.ProcessMessage(message)
         })
-        this.eventEmitter.emit("connection", connection)
     }
 
     public Connect(uri: string) {
         this.handshakeHandler.Connect(uri)
     }
 
-    public on(event: string, listener: Function) {
-        this.eventEmitter.on(event, listener)
+    public OnConnection(listener: Function) {
+        this.handshakeHandler.on("success", listener)
     }
 
-    public onMessage(event: string, listener: Function) {
-        this.messageHandler.onMessage(event, listener)
+    public OnMessage(event: string, listener: Function) {
+        this.messageHandler.OnMessage(event, listener)
     }
 
-    private sendToAll(message: VoidnetMessage) {
+    private SendToAll(message: VoidnetMessage) {
         this.connections.forEach(connection => {
             connection.send(message)
         })
     }
 
-    public broadcast(type: string, data: any) {
-        this.sendToAll(this.messageHandler.MakeMessage(type, data))
-    }
-}
-
-export class VoidnetNode {
-    protected server: VoidnetServer
-
-    public meta(): VoidnetNodeMeta { return this.server.meta }
-
-    constructor(hostname: string, port: number) {
-        this.server = new VoidnetServer(hostname, port)
+    public Broadcast(type: string, data: any) {
+        this.SendToAll(this.messageHandler.MakeMessage(type, data))
     }
 
-    public broadcast(event: string, data: any) {
-        // Broadcast a packet to entire network
-    }
-
-    public on(event: string, callback: Function) {
-        // Hook to internal events
+    public Disconnect(guid: string) {
+        if(this.connections.has(guid)) {
+            const connection = this.connections.get(guid)
+            this.connections.delete(guid)
+            connection.disconnect()
+        }
     }
 }
