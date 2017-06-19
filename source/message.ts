@@ -11,10 +11,16 @@ export class VoidnetMessage {
     public readonly data: any
 
     constructor(params: {sender: string, id: number, type: string, data: any}) {
-        this.sender = params.sender
-        this.id = params.id
-        this.type = params.type
-        this.data = params.data
+        const assign = (param) => {
+            return (
+                params && typeof params === "object" && param in params ?
+                params[param] : undefined
+            )
+        }
+        this.sender = assign("sender")
+        this.id = assign("id")
+        this.type = assign("type")
+        this.data = assign("data")
     }
 
     public Validate(): boolean {
@@ -61,6 +67,7 @@ export class VoidnetMessageHandler {
     protected meta: VoidnetNodeMeta
     protected lastId: number
     protected messageTrackers: Map<string, VoidnetMessageTracker>
+    protected messageEmitter: events.EventEmitter
     protected eventEmitter: events.EventEmitter
     protected rejectedCounter: number
 
@@ -71,6 +78,7 @@ export class VoidnetMessageHandler {
         this.lastId = 0
         this.messageTrackers = new Map<string, VoidnetMessageTracker>()
         this.messageTrackers.set(meta.guid, this.CreateMessageTracker())
+        this.messageEmitter = new events.EventEmitter()
         this.eventEmitter = new events.EventEmitter()
         this.rejectedCounter = 0
     }
@@ -88,6 +96,10 @@ export class VoidnetMessageHandler {
 
     public on(event: string, listener: Function): void {
         this.eventEmitter.on(event, listener)
+    }
+
+    public onMessage(event: string, listener: Function): void {
+        this.messageEmitter.on(event, listener)
     }
 
     protected CreateMessageTracker(): VoidnetMessageTracker {
@@ -116,8 +128,9 @@ export class VoidnetMessageHandler {
             return
         }
 
-        // This is a new message; add it to our seen messages and fire the message received event
+        // This is a new message; add it to our seen messages and fire the message received events
         this.messageTrackers.get(message.sender).Track(message)
-        this.eventEmitter.emit(message.type, message)
+        this.eventEmitter.emit("received", message)
+        this.messageEmitter.emit(message.type, message)
     }
 }

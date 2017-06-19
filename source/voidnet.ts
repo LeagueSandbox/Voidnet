@@ -6,7 +6,7 @@ import * as events from "events"
 
 import { GetUri } from "./utils"
 import { VoidnetHandshakeHandler } from "./handshake"
-import { VoidnetMessageHandler } from "./message"
+import { VoidnetMessage, VoidnetMessageHandler } from "./message"
 
 export class VoidnetNodeMeta {
     public readonly hostname: string
@@ -26,8 +26,8 @@ export class VoidnetNodeMeta {
 }
 
 export class VoidnetConnection {
-    protected clientSocket: SocketIOClient.Socket
-    protected serverSocket: SocketIO.Socket
+    public clientSocket: SocketIOClient.Socket
+    public serverSocket: SocketIO.Socket
     protected eventEmitter: events.EventEmitter
     public readonly remoteMeta: VoidnetNodeMeta
 
@@ -50,7 +50,15 @@ export class VoidnetConnection {
     private MapEvents(): void {
         this.clientSocket.on("disconnected", this.OnDisconnection)
         this.serverSocket.on("disconnect", this.OnDisconnection)
-        this.clientSocket.on("message", (data) => (this.eventEmitter.emit("message", data)))
+        this.clientSocket.on("message", (message) => this.eventEmitter.emit("message", message))
+    }
+
+    public on(event: string, listener: Function) {
+        this.eventEmitter.on(event, listener)
+    }
+
+    public send(message: VoidnetMessage) {
+        this.serverSocket.emit("message", message)
     }
 }
 
@@ -58,7 +66,8 @@ export class VoidnetServer {
     protected server: http.Server
     protected io: SocketIO.Server
     protected eventEmitter: events.EventEmitter
-    public handshakeHandler: VoidnetHandshakeHandler
+    protected handshakeHandler: VoidnetHandshakeHandler
+    protected messageHandler: VoidnetMessageHandler
 
     public readonly meta: VoidnetNodeMeta
     protected connections: VoidnetConnection[]
@@ -72,6 +81,8 @@ export class VoidnetServer {
         })
         this.handshakeHandler = this.CreateHandshakeHandler(this.meta)
         this.handshakeHandler.on("success", this.HandleSuccessfullHandshake)
+        this.messageHandler = new VoidnetMessageHandler(this.meta)
+        this.messageHandler.on("received", (message) => this.sendToAll(message))
         this.server = http.createServer()
         this.io = SocketIOServer(this.server)
         this.io.on("connection", this.handshakeHandler.HandleIncoming)
@@ -86,6 +97,9 @@ export class VoidnetServer {
 
     private HandleSuccessfullHandshake = (connection: VoidnetConnection) => {
         this.connections.push(connection)
+        connection.on("message", (message) => {
+            this.messageHandler.ProcessMessage(message)
+        })
         this.eventEmitter.emit("connection", connection)
     }
 
@@ -93,15 +107,28 @@ export class VoidnetServer {
         this.handshakeHandler.Connect(uri)
     }
 
-    public on(event: string, callback: Function) {
-        this.eventEmitter.on(event, callback)
+    public on(event: string, listener: Function) {
+        this.eventEmitter.on(event, listener)
+    }
+
+    public onMessage(event: string, listener: Function) {
+        this.messageHandler.onMessage(event, listener)
+    }
+
+    private sendToAll(message: VoidnetMessage) {
+        this.connections.forEach(connection => {
+            connection.send(message)
+        })
+    }
+
+    public broadcast(type: string, data: any) {
+        this.sendToAll(this.messageHandler.MakeMessage(type, data))
     }
 }
 
 export class VoidnetNode {
     protected server: VoidnetServer
 
-    // public connections(): VoidnetConnection[] { return this.server.connections }
     public meta(): VoidnetNodeMeta { return this.server.meta }
 
     constructor(hostname: string, port: number) {

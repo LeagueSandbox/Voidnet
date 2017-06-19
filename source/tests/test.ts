@@ -1,15 +1,20 @@
-import { suite, test } from "mocha-typescript"
+import { suite, test, timeout } from "mocha-typescript"
 import { expect } from "chai"
 import * as sleep from "sleep-promise"
 
 import { VoidnetNodeMeta, VoidnetServer } from "../voidnet"
 import { VoidnetHandshakeHandler } from "../handshake"
 import { VoidnetMessageHandler, VoidnetMessageTracker, VoidnetMessage } from "../message"
+import { ValueMonitor } from "../utils"
 
 
 class VoidnetTestInvalidServer extends VoidnetServer {
     protected CreateHandshakeHandler(meta: VoidnetNodeMeta) {
         return new VoidnetTestInvalidHandshakeHandler(this.meta)
+    }
+
+    public get getHandshakeHandler(): VoidnetHandshakeHandler {
+        return this.handshakeHandler
     }
 }
 
@@ -44,6 +49,37 @@ const message = (sender, id, type, data) => {
     })
 }
 
+let lastUsedPort = 8000
+function GetUnusedPort(): number {
+    return lastUsedPort++
+}
+
+@suite("Test Utils")
+class TestUtils {
+    @test
+    "Test ValueMonitor get"(done) {
+        const monitor = new ValueMonitor<number>(2)
+        monitor.on("get", (value) => {
+            expect(value).to.equal(2)
+            done()
+        })
+        expect(monitor.value).to.equal(2)
+    }
+
+    @test
+    "Test ValueMonitor set"(done) {
+        const monitor = new ValueMonitor<number>(2)
+        expect(monitor.value).to.equal(2)
+        monitor.on("set", (newValue, oldValue) => {
+            expect(oldValue).to.equal(2)
+            expect(newValue).to.equal(3)
+            done()
+        })
+        monitor.value = 3
+        expect(monitor.value).to.equal(3)
+    }
+}
+
 @suite("Test Voidnet Components")
 class TestComponents {
     @test
@@ -60,8 +96,8 @@ class TestComponents {
 
     @test
     "VoidnetServer cross connection"(done) {
-        const srv1 = new VoidnetServer("localhost", 8081)
-        const srv2 = new VoidnetServer("localhost", 8082)
+        const srv1 = new VoidnetServer("localhost", GetUnusedPort())
+        const srv2 = new VoidnetServer("localhost", GetUnusedPort())
         srv1.on("connection", () => {
             expect(srv1.connectionCount).to.equal(1)
             expect(srv2.connectionCount).to.equal(1)
@@ -72,8 +108,8 @@ class TestComponents {
 
     @test
     "VoidnetServer connection failure [invalid node meta]"(done) {
-        const srv1 = new VoidnetServer("localhost", 8085)
-        const srv2 = new VoidnetServer("localhost", 8086)
+        const srv1 = new VoidnetServer("localhost", GetUnusedPort())
+        const srv2 = new VoidnetServer("localhost", GetUnusedPort())
         const fake = new VoidnetHandshakeHandler(new VoidnetNodeMeta({hostname: srv1.meta.hostname, port: srv1.meta.port}))
         fake.on("failure", () => {
             expect(srv1.connectionCount).to.equal(0)
@@ -85,10 +121,10 @@ class TestComponents {
 
     @test
     "VoidnetServer connection failure [invalid secret]"(done) {
-        const srv1 = new VoidnetTestInvalidServer("localhost", 8087)
-        const srv2 = new VoidnetServer("localhost", 8088)
+        const srv1 = new VoidnetTestInvalidServer("localhost", GetUnusedPort())
+        const srv2 = new VoidnetServer("localhost", GetUnusedPort())
         srv1.Connect(srv2.meta.uri)
-        srv1.handshakeHandler.on("failure", () => {
+        srv1.getHandshakeHandler.on("failure", () => {
             expect(srv1.connectionCount).to.equal(0)
             expect(srv2.connectionCount).to.equal(0)
             done()
@@ -162,7 +198,7 @@ class TestComponents {
         let receivedCount = 0
 
         const handler = new VoidnetTestMessageHandler(meta)
-        handler.on("test", (message: VoidnetMessage) => {
+        handler.onMessage("test", (message: VoidnetMessage) => {
             receivedCount++
         })
 
@@ -204,8 +240,9 @@ class TestComponents {
         handler.ProcessMessage(message("garbage", 1, "test", ""))
         handler.ProcessMessage(message("00000000-0000-0000-0000-000000000001", "garbage", "test", ""))
         handler.ProcessMessage(message("00000000-0000-0000-0000-000000000001", 2, "", "TypeIsGarbage"))
+        handler.ProcessMessage(<VoidnetMessage><any>{"kek": "top"})
         await sleep(TEST_MESSAGE_TIMEOUT)
-        expect(handler.rejectedMessageCount).to.equal(3)
+        expect(handler.rejectedMessageCount).to.equal(4)
     }
 
     @test
@@ -222,7 +259,7 @@ class TestComponents {
             data: "Some data"
         })
         const handler = new VoidnetMessageHandler(meta)
-        handler.on("test", (message: VoidnetMessage) => {
+        handler.onMessage("test", (message: VoidnetMessage) => {
             expect(message).to.deep.equal(testMessage)
             done()
         })
@@ -236,17 +273,56 @@ class TestComponents {
         const invalid1 = message("invalid", 5, "test", "")
         const invalid2 = message("00000000-0000-0000-0000-000000000001", "invalid", "test", "")
         const invalid3 = message("00000000-0000-0000-0000-000000000001", 5, "", "")
+        const invalid4 = new VoidnetMessage(<VoidnetMessage><any>{"asd": "dsa"})
+        const invalid5 = new VoidnetMessage(<VoidnetMessage><any>"test")
         expect(valid.Validate()).to.be.true
         expect(invalid1.Validate()).to.be.false
         expect(invalid2.Validate()).to.be.false
         expect(invalid3.Validate()).to.be.false
+        expect(invalid4.Validate()).to.be.false
+        expect(invalid5.Validate()).to.be.false
     }
 }
 
 @suite("Test Voidnet Networking")
 class TestNetworking {
     @test
-    "Broadcasting [3 node network]"(done) {
-        done()
+    "Broadcasting [3 node chain network]"(done) {
+        const srv1 = new VoidnetServer("localhost", GetUnusedPort())
+        const srv2 = new VoidnetServer("localhost", GetUnusedPort())
+        const srv3 = new VoidnetServer("localhost", GetUnusedPort())
+
+        const validMessages = new ValueMonitor<number>(0)
+        validMessages.on("set", (newVal) => {
+            if(newVal == 2) done()
+        })
+
+        const connections = new ValueMonitor<number>(0)
+        connections.on("set", (newVal) => {
+            if(newVal == 4) {
+                expect(srv1.connectionCount).to.equal(1)
+                expect(srv2.connectionCount).to.equal(2)
+                expect(srv3.connectionCount).to.equal(1)
+                srv3.broadcast("test", "data")
+            }
+        })
+
+        srv1.Connect(srv2.meta.uri)
+        srv2.Connect(srv3.meta.uri)
+
+        srv1.on("connection", () => connections.value++)
+        srv2.on("connection", () => connections.value++)
+        srv3.on("connection", () => connections.value++)
+
+        srv2.onMessage("test", (message: VoidnetMessage) => {
+            expect(message.sender).to.equal(srv3.meta.guid)
+            expect(message.data).to.equal("data")
+            validMessages.value++
+        })
+        srv1.onMessage("test", (message: VoidnetMessage) => {
+            expect(message.sender).to.equal(srv3.meta.guid)
+            expect(message.data).to.equal("data")
+            validMessages.value++
+        })
     }
 }
