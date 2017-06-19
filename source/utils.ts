@@ -25,4 +25,16 @@ export class ValueMonitor<T> {
     public on(event: string, listener: Function) {
         this.eventEmitter.on(event, listener)
     }
+
+    public wait(value: T) {
+        return new Promise((resolve) => {
+            const trigger = (newValue) => {
+                if(newValue === value) {
+                    this.eventEmitter.removeListener("set", trigger)
+                    resolve()
+                }
+            }
+            this.eventEmitter.addListener("set", trigger)
+        })
+    }
 }

@@ -7,6 +7,7 @@ import * as events from "events"
 import { GetUri } from "./utils"
 import { VoidnetHandshakeHandler } from "./handshake"
 import { VoidnetMessage, VoidnetMessageHandler } from "./message"
+import { VoidnetMap } from "./map"
 
 export class VoidnetNodeMeta {
     public readonly hostname: string
@@ -50,19 +51,32 @@ export class VoidnetConnection {
     private MapEvents(): void {
         this.clientSocket.on("disconnected", this.OnDisconnection)
         this.serverSocket.on("disconnect", this.OnDisconnection)
-        this.clientSocket.on("message", (message) => this.eventEmitter.emit("message", message))
     }
 
-    public on(event: string, listener: Function): void {
+    public OnEvent(event: string, listener: Function): void {
         this.eventEmitter.on(event, listener)
     }
 
-    public send(message: VoidnetMessage): void {
+    public OnClient(event: string, listener: Function): void {
+        this.clientSocket.on(event, listener)
+    }
+
+    public OnServer(event: string, listener: Function): void {
+        this.serverSocket.on(event, listener)
+    }
+
+    public Emit(event: string, args: any[]) {
+        this.serverSocket.emit(event, args)
+    }
+
+    public Broadcast(message: VoidnetMessage): void {
         this.serverSocket.emit("message", message)
     }
 
-    public disconnect() {
+    public Disconnect() {
         this.eventEmitter.removeAllListeners()
+        this.clientSocket.removeAllListeners()
+        this.serverSocket.removeAllListeners()
         this.clientSocket.disconnect()
         this.serverSocket.disconnect(true)
     }
@@ -74,21 +88,26 @@ export class VoidnetServer {
     protected eventEmitter: events.EventEmitter
     protected handshakeHandler: VoidnetHandshakeHandler
     protected messageHandler: VoidnetMessageHandler
+    protected voidnetMap: VoidnetMap
 
     public readonly meta: VoidnetNodeMeta
     protected connections: Map<string, VoidnetConnection>
 
     get connectionCount(): Number { return this.connections.size }
+    get networkMap(): Map<string, string[]> { return this.voidnetMap.networkMap }
 
     constructor(hostname: string, port: number) {
         this.meta = new VoidnetNodeMeta({
             hostname: hostname,
             port: port
         })
+        this.voidnetMap = new VoidnetMap()
         this.handshakeHandler = this.CreateHandshakeHandler(this.meta)
         this.handshakeHandler.on("success", this.HandleSuccessfullHandshake)
         this.messageHandler = new VoidnetMessageHandler(this.meta)
         this.messageHandler.OnEvent("received", (message) => this.SendToAll(message))
+        this.messageHandler.OnMessage("voidnet-connect", this.voidnetMap.HandleEvents)
+        this.messageHandler.OnMessage("voidnet-disconnect", this.voidnetMap.HandleEvents)
         this.server = http.createServer()
         this.io = SocketIOServer(this.server)
         this.io.on("connection", this.handshakeHandler.HandleIncoming)
@@ -97,8 +116,9 @@ export class VoidnetServer {
     }
 
     // Voidnet events
-    // voidnet-connect (remoteGuid) -- broadcasted by a node when it forms a connection
-    // voidnet-disconnect (remoteGuid) -- broadcasted by a node when it disconnects
+    // message -> voidnet-connect (remoteGuid) -- broadcasted by a node when it forms a connection
+    // message -> voidnet-disconnect (remoteGuid) -- broadcasted by a node when it disconnects
+    // map (map) -- sent by both nodes in private after a successfull handshake
 
     protected CreateHandshakeHandler(meta: VoidnetNodeMeta): VoidnetHandshakeHandler {
         return new VoidnetHandshakeHandler(this.meta)
@@ -106,10 +126,11 @@ export class VoidnetServer {
 
     private HandleSuccessfullHandshake = (connection: VoidnetConnection) => {
         this.connections.set(connection.remoteMeta.guid, connection)
-        connection.on("message", (message) => {
-            this.messageHandler.ProcessMessage(message)
-        })
-        this.Broadcast("voidnet-connect", connection.remoteMeta.guid)
+        connection.OnClient("message", this.messageHandler.ProcessMessage)
+        connection.OnClient("map", this.voidnetMap.HandleEvents)
+        const message = this.Broadcast("voidnet-connect", connection.remoteMeta.guid)
+        this.voidnetMap.HandleEvents(message)
+        connection.Emit("map", this.voidnetMap.GetNewestEvents())
     }
 
     public Connect(uri: string) {
@@ -126,20 +147,23 @@ export class VoidnetServer {
 
     private SendToAll(message: VoidnetMessage) {
         this.connections.forEach(connection => {
-            connection.send(message)
+            connection.Broadcast(message)
         })
     }
 
     public Broadcast(type: string, data: any) {
-        this.SendToAll(this.messageHandler.MakeMessage(type, data))
+        const message = this.messageHandler.MakeMessage(type, data)
+        this.SendToAll(message)
+        return message
     }
 
     public Disconnect(guid: string) {
         if(this.connections.has(guid)) {
             const connection = this.connections.get(guid)
             this.connections.delete(guid)
-            connection.disconnect()
+            connection.Disconnect()
         }
-        this.Broadcast("voidnet-disconnect", guid)
+        const message = this.Broadcast("voidnet-disconnect", guid)
+        this.voidnetMap.HandleEvents(message)
     }
 }

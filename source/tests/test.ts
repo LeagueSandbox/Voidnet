@@ -78,6 +78,15 @@ class TestUtils {
         monitor.value = 3
         expect(monitor.value).to.equal(3)
     }
+
+    @test
+    async "Test ValueMonitor wait"() {
+        const monitor = new ValueMonitor<number>(2)
+        expect(monitor.value).to.equal(2)
+        setTimeout(() => monitor.value++, 20)
+        await monitor.wait(3)
+        expect(monitor.value).to.equal(3)
+    }
 }
 
 @suite("Test Voidnet Components")
@@ -283,34 +292,31 @@ class TestComponents {
         expect(invalid5.Validate()).to.be.false
     }
 
-    @test
-    "VoidnetConnection"() {
-        // IMPLEMENT
+    @test.skip
+    "VoidnetConnection tests"() {
+        // TODO
+    }
+
+    @test.skip
+    "VoidnetMap tests"() {
+        // TODO
+    }
+
+    @test.skip
+    "Multiple connections between 2 nodes should fail"() {
+        // TODO
     }
 }
 
-@suite("Test Voidnet Networking")
+@suite("Test Voidnet Networking", timeout(8000))
 class TestNetworking {
     @test
-    "Broadcasting [3 node chain network]"(done) {
+    async "Broadcasting [3 node chain network]"() {
         const srv1 = new VoidnetServer("localhost", GetUnusedPort())
         const srv2 = new VoidnetServer("localhost", GetUnusedPort())
         const srv3 = new VoidnetServer("localhost", GetUnusedPort())
 
-        const validMessages = new ValueMonitor<number>(0)
-        validMessages.on("set", (newVal) => {
-            if(newVal == 2) done()
-        })
-
         const connections = new ValueMonitor<number>(0)
-        connections.on("set", (newVal) => {
-            if(newVal == 4) {
-                expect(srv1.connectionCount).to.equal(1)
-                expect(srv2.connectionCount).to.equal(2)
-                expect(srv3.connectionCount).to.equal(1)
-                srv3.Broadcast("test", "data")
-            }
-        })
 
         srv1.Connect(srv2.meta.uri)
         srv2.Connect(srv3.meta.uri)
@@ -318,6 +324,14 @@ class TestNetworking {
         srv1.OnConnection(() => connections.value++)
         srv2.OnConnection(() => connections.value++)
         srv3.OnConnection(() => connections.value++)
+
+        await connections.wait(4)
+
+        expect(srv1.connectionCount).to.equal(1)
+        expect(srv2.connectionCount).to.equal(2)
+        expect(srv3.connectionCount).to.equal(1)
+
+        const validMessages = new ValueMonitor<number>(0)
 
         srv2.OnMessage("test", (message: VoidnetMessage) => {
             expect(message.sender).to.equal(srv3.meta.guid)
@@ -328,6 +342,22 @@ class TestNetworking {
             expect(message.sender).to.equal(srv3.meta.guid)
             expect(message.data).to.equal("data")
             validMessages.value++
+        })
+
+        srv3.Broadcast("test", "data")
+
+        await validMessages.wait(2)
+
+        expect(validMessages.value).to.equal(2)
+
+        await sleep(TEST_MESSAGE_TIMEOUT)
+
+        const servers = [srv1, srv2, srv3]
+        servers.forEach((server) => {
+            expect(srv2.meta.guid in server.networkMap.get(srv1.meta.guid)).to.be.true
+            expect(srv1.meta.guid in server.networkMap.get(srv2.meta.guid)).to.be.true
+            expect(srv3.meta.guid in server.networkMap.get(srv2.meta.guid)).to.be.true
+            expect(srv2.meta.guid in server.networkMap.get(srv3.meta.guid)).to.be.true
         })
     }
 }
