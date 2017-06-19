@@ -96,6 +96,10 @@ export class VoidnetServer {
         this.connections = new Map<string, VoidnetConnection>()
     }
 
+    // Voidnet events
+    // voidnet-connect (remoteGuid) -- broadcasted by a node when it forms a connection
+    // voidnet-disconnect (remoteGuid) -- broadcasted by a node when it disconnects
+
     protected CreateHandshakeHandler(meta: VoidnetNodeMeta): VoidnetHandshakeHandler {
         return new VoidnetHandshakeHandler(this.meta)
     }
@@ -105,6 +109,7 @@ export class VoidnetServer {
         connection.on("message", (message) => {
             this.messageHandler.ProcessMessage(message)
         })
+        this.Broadcast("voidnet-connect", connection.remoteMeta.guid)
     }
 
     public Connect(uri: string) {
@@ -135,5 +140,6 @@ export class VoidnetServer {
             this.connections.delete(guid)
             connection.disconnect()
         }
+        this.Broadcast("voidnet-disconnect", guid)
     }
 }
