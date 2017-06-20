@@ -9,7 +9,7 @@ Simple decentralized network
 * Capability to "self heal" if a node goes down (form new replacement connections)
 * Every node should be aware of the current network topology
 * Broadcasting that propagates accross the whole network
-* Vector clock based messaging (messages are processed only once)
+* Message tracking and deduplication (messages are processed only once)
 * Mesages are signed by nodes and sender can be verified
 * Validate all incoming websocket traffic
 
