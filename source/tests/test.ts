@@ -12,10 +12,6 @@ class VoidnetTestInvalidServer extends VoidnetServer {
     protected CreateHandshakeHandler(meta: VoidnetNodeMeta) {
         return new VoidnetTestInvalidHandshakeHandler(this.meta)
     }
-
-    public get getHandshakeHandler(): VoidnetHandshakeHandler {
-        return this.handshakeHandler
-    }
 }
 
 class VoidnetTestInvalidHandshakeHandler extends VoidnetHandshakeHandler {
@@ -133,6 +129,22 @@ class TestComponents {
             expect(srv2.connectionCount).to.equal(0)
             done()
         })
+    }
+
+    @test
+    async "VoidnetServer disconnect"() {
+        const srv1 = new VoidnetServer("localhost", GetUnusedPort())
+        const srv2 = new VoidnetServer("localhost", GetUnusedPort())
+        await srv1.Connect(srv2.meta.uri)
+        expect(srv1.connectionCount).to.equal(1)
+        expect(srv2.connectionCount).to.equal(1)
+        srv1.Disconnect(srv2.meta.guid)
+        await sleep(TEST_MESSAGE_TIMEOUT)
+        expect(srv1.connectionCount).to.equal(0)
+        expect(srv2.connectionCount).to.equal(0)
+        await srv1.Connect(srv2.meta.uri)
+        expect(srv1.connectionCount).to.equal(1)
+        expect(srv2.connectionCount).to.equal(1)
     }
 
     @test

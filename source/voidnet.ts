@@ -43,8 +43,7 @@ export class VoidnetConnection {
     }
 
     private OnDisconnection = () => {
-        if(this.clientSocket.connected) this.clientSocket.disconnect()
-        if(this.serverSocket.connected) this.serverSocket.disconnect(true)
+        this.Disconnect()
         this.eventEmitter.emit("disconnected", this)
     }
 
@@ -74,11 +73,14 @@ export class VoidnetConnection {
     }
 
     public Disconnect() {
+        if(this.clientSocket.connected) this.clientSocket.disconnect()
+        if(this.serverSocket.connected) this.serverSocket.disconnect(true)
+    }
+
+    public Dispose() {
         this.eventEmitter.removeAllListeners()
         this.clientSocket.removeAllListeners()
         this.serverSocket.removeAllListeners()
-        this.clientSocket.disconnect()
-        this.serverSocket.disconnect(true)
     }
 }
 
@@ -128,9 +130,17 @@ export class VoidnetServer {
         this.connections.set(connection.remoteMeta.guid, connection)
         connection.OnClient("message", this.messageHandler.ProcessMessage)
         connection.OnClient("map", this.voidnetMap.HandleEvents)
+        connection.OnEvent("disconnected", this.HandleDisconnected)
         const message = this.Broadcast("voidnet-connect", connection.remoteMeta.guid)
         this.voidnetMap.HandleEvents(message)
         connection.Emit("map", this.voidnetMap.GetNewestEvents())
+    }
+
+    private HandleDisconnected = (connection: VoidnetConnection) => {
+        if(!this.connections.has(connection.remoteMeta.guid)) return
+        this.connections.delete(connection.remoteMeta.guid)
+        const message = this.Broadcast("voidnet-disconnect", connection.remoteMeta.guid)
+        this.voidnetMap.HandleEvents(message)
     }
 
     public Connect(uri: string): Promise<VoidnetConnection> {
@@ -154,12 +164,9 @@ export class VoidnetServer {
     }
 
     public Disconnect(guid: string) {
-        if(this.connections.has(guid)) {
-            const connection = this.connections.get(guid)
-            this.connections.delete(guid)
-            connection.Disconnect()
-        }
-        const message = this.Broadcast("voidnet-disconnect", guid)
-        this.voidnetMap.HandleEvents(message)
+        if(!this.connections.has(guid)) return
+        const connection = this.connections.get(guid)
+        connection.Disconnect()
+        this.HandleDisconnected(connection)
     }
 }
