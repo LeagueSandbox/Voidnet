@@ -64,12 +64,8 @@ export class VoidnetConnection {
         this.serverSocket.on(event, listener)
     }
 
-    public Emit(event: string, args: any[]) {
+    public Send(event: string, args: any[]) {
         this.serverSocket.emit(event, args)
-    }
-
-    public Broadcast(message: VoidnetMessage): void {
-        this.serverSocket.emit("message", message)
     }
 
     public Disconnect() {
@@ -133,7 +129,7 @@ export class VoidnetServer {
         connection.OnEvent("disconnected", this.HandleDisconnected)
         const message = this.Broadcast("voidnet-connect", connection.remoteMeta.guid)
         this.voidnetMap.HandleEvents(message)
-        connection.Emit("map", this.voidnetMap.GetNewestEvents())
+        connection.Send("map", this.voidnetMap.GetNewestEvents())
     }
 
     private HandleDisconnected = (connection: VoidnetConnection) => {
@@ -152,9 +148,7 @@ export class VoidnetServer {
     }
 
     private SendToAll(message: VoidnetMessage) {
-        this.connections.forEach(connection => {
-            connection.Broadcast(message)
-        })
+        this.io.emit("message", message)
     }
 
     public Broadcast(type: string, data: any) {
