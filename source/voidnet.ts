@@ -133,12 +133,8 @@ export class VoidnetServer {
         connection.Emit("map", this.voidnetMap.GetNewestEvents())
     }
 
-    public Connect(uri: string) {
-        this.handshakeHandler.Connect(uri)
-    }
-
-    public OnConnection(listener: Function) {
-        this.handshakeHandler.on("success", listener)
+    public Connect(uri: string): Promise<VoidnetConnection> {
+        return this.handshakeHandler.Connect(uri)
     }
 
     public OnMessage(event: string, listener: Function) {

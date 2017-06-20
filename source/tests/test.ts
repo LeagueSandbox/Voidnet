@@ -104,15 +104,12 @@ class TestComponents {
     }
 
     @test
-    "VoidnetServer cross connection"(done) {
+    async "VoidnetServer cross connection"() {
         const srv1 = new VoidnetServer("localhost", GetUnusedPort())
         const srv2 = new VoidnetServer("localhost", GetUnusedPort())
-        srv1.OnConnection(() => {
-            expect(srv1.connectionCount).to.equal(1)
-            expect(srv2.connectionCount).to.equal(1)
-            done()
-        })
-        srv1.Connect(srv2.meta.uri)
+        await srv1.Connect(srv2.meta.uri)
+        expect(srv1.connectionCount).to.equal(1)
+        expect(srv2.connectionCount).to.equal(1)
     }
 
     @test
@@ -120,20 +117,18 @@ class TestComponents {
         const srv1 = new VoidnetServer("localhost", GetUnusedPort())
         const srv2 = new VoidnetServer("localhost", GetUnusedPort())
         const fake = new VoidnetHandshakeHandler(new VoidnetNodeMeta({hostname: srv1.meta.hostname, port: srv1.meta.port}))
-        fake.on("failure", () => {
+        fake.Connect(srv2.meta.uri).catch(() => {
             expect(srv1.connectionCount).to.equal(0)
             expect(srv2.connectionCount).to.equal(0)
             done()
         })
-        fake.Connect(srv2.meta.uri)
     }
 
     @test
     "VoidnetServer connection failure [invalid secret]"(done) {
         const srv1 = new VoidnetTestInvalidServer("localhost", GetUnusedPort())
         const srv2 = new VoidnetServer("localhost", GetUnusedPort())
-        srv1.Connect(srv2.meta.uri)
-        srv1.getHandshakeHandler.on("failure", () => {
+        srv1.Connect(srv2.meta.uri).catch(() => {
             expect(srv1.connectionCount).to.equal(0)
             expect(srv2.connectionCount).to.equal(0)
             done()
@@ -142,7 +137,6 @@ class TestComponents {
 
     @test
     async "VoidnetMessageTracker timeout"() {
-
         const tracker = new VoidnetTestMessageTracker()
         const msgOld = message("00000000-0000-0000-0000-000000000001", 0, "test", "data")
         const msgMiddle = message("00000000-0000-0000-0000-000000000001", 1, "test", "data 2")
@@ -316,16 +310,7 @@ class TestNetworking {
         const srv2 = new VoidnetServer("localhost", GetUnusedPort())
         const srv3 = new VoidnetServer("localhost", GetUnusedPort())
 
-        const connections = new ValueMonitor<number>(0)
-
-        srv1.Connect(srv2.meta.uri)
-        srv2.Connect(srv3.meta.uri)
-
-        srv1.OnConnection(() => connections.value++)
-        srv2.OnConnection(() => connections.value++)
-        srv3.OnConnection(() => connections.value++)
-
-        await connections.wait(4)
+        await Promise.all([srv1.Connect(srv2.meta.uri), srv2.Connect(srv3.meta.uri)])
 
         expect(srv1.connectionCount).to.equal(1)
         expect(srv2.connectionCount).to.equal(2)

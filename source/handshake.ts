@@ -84,7 +84,7 @@ export class VoidnetHandshakeHandler {
                 this.eventEmitter.emit("success", pendingHandshake.ToVoidnetConnection())
             }
             else {
-                this.eventEmitter.emit("failure")
+                this.eventEmitter.emit("failure", pendingHandshake.remoteMeta.uri)
                 pendingHandshake.clientSocket.disconnect()
                 if(pendingHandshake.serverSocket !== undefined) {
                     pendingHandshake.serverSocket!.disconnect(true)
@@ -119,7 +119,7 @@ export class VoidnetHandshakeHandler {
 
             const fail = () => {
                 serverSocket.emit("handshake-result", MakeHandshakeDatum(this.meta, "fail"))
-                this.eventEmitter.emit("failure")
+                this.eventEmitter.emit("failure", GetUri(remoteHandshake))
                 serverSocket.disconnect(true)
                 clientSocket.disconnect()
             }
@@ -165,7 +165,7 @@ export class VoidnetHandshakeHandler {
         })
     }
 
-    public Connect(uri: string): void {
+    private AttemptConnect(uri: string): void {
         const clientSocket = SocketIOClient(uri).connect()
         const handshakeDatum = MakeHandshakeDatum(this.meta, "kek")
         clientSocket.on("handshake-result", this.HandleHandshakeResult)
@@ -174,9 +174,29 @@ export class VoidnetHandshakeHandler {
                 this.pendingHandshakes.set(remoteMeta.guid, new VoidnetPendingHandshake(
                     clientSocket,
                     handshakeDatum,
-                    remoteMeta
+                    new VoidnetNodeMeta(remoteMeta)
                 ))
             })
+        })
+    }
+
+    public Connect(uri: string): Promise<VoidnetConnection> {
+        return new Promise((resolve, reject) => {
+            this.AttemptConnect(uri)
+            const handleSuccess = (connection: VoidnetConnection) => {
+                if(connection.remoteMeta.uri !== uri) return
+                this.eventEmitter.removeListener("success", handleSuccess)
+                this.eventEmitter.removeListener("failure", handleFailure)
+                resolve(connection)
+            }
+            const handleFailure = (failUri) => {
+                if(failUri !== uri) return
+                this.eventEmitter.removeListener("success", handleSuccess)
+                this.eventEmitter.removeListener("failure", handleFailure)
+                reject()
+            }
+            this.eventEmitter.on("success", handleSuccess)
+            this.eventEmitter.on("failure", handleFailure)
         })
     }
 
